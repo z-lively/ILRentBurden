@@ -1,1161 +1,186 @@
 ---
-title: "California Housing"
+title: Rent Burden
 output: html_document
 editor_options: 
   chunk_output_type: console
 ---
-
+```{=html}
 <style type="text/css">
 .title {
 display: none;
 }
 </style>
+```
 
-<div class="row" style="padding-top: 0px;"> 
+<div class="row" style="padding-top: 0px;">
+
 <div class="col-sm-8">
-```{r Load libraries, echo = FALSE, warning = FALSE, message = FALSE}
-setwd("C:/Users/zaliv/OneDrive/Desktop/Data Projects/CaliforniaHousingProject")
 
+
+```{r setup, include=FALSE}
+library(knitr)
 library(tidyverse)
-library(tidycensus)
-library(ggplot2)
-library(spData)
+library(leaflet)
+library(leafem)
 library(sf)
-library(rcartocolor)
-library(cowplot)
-library(tigris)
-library(rgdal)    # for readOGR and others
-library(sp)       # for spatial objects
-library(leaflet)  # for interactive maps (NOT leafletR here)
-library(maptools)
-library(PerformanceAnalytics)
-library(data.table)
-library(hrbrthemes)
 library(leaflet.extras)
-library(plotly)
-
-options(tigris_use_cache = TRUE)
+library(leaflegend)
+library(widgetframe)
 ```
-```{r Load data, echo = FALSE, warning = FALSE, message = FALSE}
-CAPermits <- read.csv('CaliforniaPermits.csv') %>%
-  mutate(NumUnits = as.numeric(gsub(",","",Total.Units)))
 
-CALabor <- read.csv('Local_Area_Unemployment_Statistics__LAUS_.csv') %>%
-  mutate(
-    AreaType = ï..Area.Type,
-    SeasonallyAdjusted = Seasonally.Adjusted..Y.N.)
+```{r load data, include = FALSE}
+setwd("C:/Users/zaliv/OneDrive/Desktop/Data Projects/ILRentBurden")
 
-AllACSVariables <- load_variables(year = 2019, 
-                                  dataset = "acs5", 
-                                  cache = TRUE)
+rentBurdenData <- read.csv('RentBurden.csv')
 
-get_acs_data <- function(ACSYears, variable) {
-  
-  ACSData <- map_dfr(
-    ACSYears, 
-    ~get_acs(
-      geography = "county",
-      variables = variable,
-      year = .x,
-      state = "CA",
-      survey = "acs5",
-      geometry = FALSE
-    ),
-    .id = "year") %>%
-    mutate(County.Name = str_sub(NAME,end = -13))
-  
-  ACSData <- subset(ACSData, select = -c(moe))
-}
-
-ACSYears <- lst(2014, 2019)
-
-CAPOPULATION <- "B01003_001"
-CARENTLOW <- "B25057_001"
-CARENTMED <- "B25058_001"
-CARENTHIGH <- "B25059_001"
-CAHOUSELOW <- "B25076_001"
-CAHOUSEMED <- "B25077_001"
-CAHOUSEHIGH <- "B25078_001"
-CAOWNERWHITE <- "B25003A_002"
-CAOWNERBLACK <- "B25003B_002"
-CAOWNERLATINO <- "B25003I_002"
-CAINCOME1 <- "B19081_001"
-CAINCOME2 <- "B19081_002"
-CAINCOME3 <- "B19081_003"
-CAINCOME4 <- "B19081_004"
-CAINCOME5 <- "B19081_005"
-
-CAPopulation <- get_acs_data(ACSYears, CAPOPULATION)
-CARentLow <- get_acs_data(ACSYears, CARENTLOW)
-CARentMed <- get_acs_data(ACSYears, CARENTMED)
-CARentHigh <- get_acs_data(ACSYears, CARENTHIGH)
-CAHouseLow <- get_acs_data(ACSYears, CAHOUSELOW)
-CAHouseMed <- get_acs_data(ACSYears, CAHOUSEMED)
-CAHouseHigh <- get_acs_data(ACSYears, CAHOUSEHIGH)
-CAOwnerWhite <- get_acs_data(ACSYears, CAOWNERWHITE)
-CAOwnerBlack <- get_acs_data(ACSYears, CAOWNERBLACK)
-CAOwnerLatino <- get_acs_data(ACSYears, CAOWNERLATINO)
-CAIncome1 <- get_acs_data(ACSYears, CAINCOME1)
-CAIncome2 <- get_acs_data(ACSYears, CAINCOME2)
-CAIncome3 <- get_acs_data(ACSYears, CAINCOME3)
-CAIncome4 <- get_acs_data(ACSYears, CAINCOME4)
-CAIncome5 <- get_acs_data(ACSYears, CAINCOME5)
+houseMap <- st_read("tl_2018_17_sldl.shp")
 
 ```
-```{r Clean data, echo = FALSE, warning = FALSE, message = FALSE}
-CleanCAPermits <- CAPermits %>% 
-  filter(Survey.Date >= 2014 & Survey.Date <= 2019)
 
-CleanCALabor <- CALabor %>% 
-  filter(AreaType == 'County') %>%
-  filter(Year == 2014 | Year == 2019) %>%
-  filter(Month == 'December') %>%
-  filter(SeasonallyAdjusted == 'N') %>%
-  mutate(County.Name = Area.Name,
-         Labor.Force = as.numeric(gsub(",","",Employment))) %>%
-  subset(select = c(County.Name, Year, Labor.Force))
+```{r, prepare data, echo = FALSE, message = FALSE, warning = FALSE}
 
-CleanCAPopulation <- CAPopulation
-CleanCARentLow <- CARentLow
-CleanCARentMed <- CARentMed
-CleanCARentHigh <- CARentHigh
+houseMapClean <- houseMap %>% filter(GEOID != "17ZZZ")
 
-CleanCAHouseLow <- CAHouseLow
-CleanCAHouseMed <- CAHouseMed
-CleanCAHouseHigh <- CAHouseHigh
+rentBurdenData <- rentBurdenData %>%
+  mutate(incomeClean = str_sub(Income, 1, 7),
+         noBurden = as.numeric(gsub("%", "", No.Burden))*.01,
+         moderateBurden = as.numeric(gsub("%", "", Moderate.Cost.Burden))*.01,
+         severeBurden = as.numeric(gsub("%", "", Severe.Cost.Burden))*.01,
+         moderateBurdenSum = moderateBurden + severeBurden,
+         geographicClean = sub("\\(.*", "", Geographic.Area.Name),
+         geographicClean = substr(geographicClean, 
+                                  start = 1, 
+                                  stop = nchar(geographicClean)-1))
 
-CleanCAOwnerWhite <- CAOwnerWhite
-CleanCAOwnerBlack <- CAOwnerBlack
-CleanCAOwnerLatino <- CAOwnerLatino
 
-CleanCAIncome1 <- CAIncome1
-CleanCAIncome2 <- CAIncome2
-CleanCAIncome3 <- CAIncome3
-CleanCAIncome4 <- CAIncome4
-CleanCAIncome5 <- CAIncome5
-
-```
-```{r Spread data, echo = FALSE, warning = FALSE, message = FALSE}
-SpreadCAPermits <- CleanCAPermits
-SpreadCALabor <- CleanCALabor  %>% spread(Year, Labor.Force)
-
-spread_data <- function(DataTable) {SpreadDataTable <- DataTable %>% spread(year, estimate)}
-
-SpreadCAPopulation <- spread_data(CleanCAPopulation)
-SpreadCARentLow <- spread_data(CleanCARentLow)
-SpreadCARentMed <- spread_data(CleanCARentMed)
-SpreadCARentHigh <- spread_data(CleanCARentHigh)
-SpreadCAHouseLow <- spread_data(CleanCAHouseLow)
-SpreadCAHouseMed <- spread_data(CleanCAHouseMed)
-SpreadCAHouseHigh <- spread_data(CleanCAHouseHigh)
-SpreadCAOwnerWhite <- spread_data(CleanCAOwnerWhite)
-SpreadCAOwnerBlack <- spread_data(CleanCAOwnerBlack)
-SpreadCAOwnerLatino <- spread_data(CleanCAOwnerLatino)
-SpreadCAIncome1 <- spread_data(CleanCAIncome1)
-SpreadCAIncome2 <- spread_data(CleanCAIncome2)
-SpreadCAIncome3 <- spread_data(CleanCAIncome3)
-SpreadCAIncome4 <- spread_data(CleanCAIncome4)
-SpreadCAIncome5 <- spread_data(CleanCAIncome5)
-```
-```{r Calculations, echo = FALSE, warning = FALSE, message = FALSE}
-
-calculate_growth_rate <- function(DataTable) {GrowthRate <- (DataTable$"2019" - DataTable$"2014")/
-  DataTable$"2014"}
-calculate_change <- function(DataTable) {LaborChange <- DataTable$"2019" - DataTable$"2014"}
-
-SpreadCALabor <- SpreadCALabor %>%
-  mutate(
-    LaborGrowthRate = calculate_growth_rate(SpreadCALabor),
-    LaborChange = calculate_change(SpreadCALabor)
+rentBurdenFinal <- rentBurdenData %>%
+  reshape2::melt(
+    id.vars = c("Geographic.Area.Name", "incomeClean", "geographicClean"),
+    measure.vars = c("noBurden","moderateBurden","severeBurden", "moderateBurdenSum")
   )
 
-SpreadCAPopulation <- SpreadCAPopulation %>%
-  mutate(
-    PopGrowthRate = calculate_growth_rate(SpreadCAPopulation),
-    PopChange = calculate_change(SpreadCAPopulation)
-  )
-
-SpreadCARentLow <- SpreadCARentLow %>%
-  mutate(
-    LowRentGrowthRate = calculate_growth_rate(SpreadCARentLow),
-    LowRentChange = calculate_change(SpreadCARentLow)
-  )
-
-SpreadCARentMed <- SpreadCARentMed %>%
-  mutate(
-    MedRentGrowthRate = calculate_growth_rate(SpreadCARentMed),
-    MedRentChange = calculate_change(SpreadCARentMed)
-  )
-
-SpreadCARentHigh <- SpreadCARentHigh %>%
-  mutate(
-    HighRentGrowthRate = calculate_growth_rate(SpreadCARentHigh),
-    HighRentChange = calculate_change(SpreadCARentHigh)
-  )
-
-SpreadCAHouseLow <- SpreadCAHouseLow %>%
-  mutate(
-    LowHouseGrowthRate = calculate_growth_rate(SpreadCAHouseLow),
-    LowHouseChange = calculate_change(SpreadCAHouseLow)
-  )
-
-SpreadCAHouseMed <- SpreadCAHouseMed %>%
-  mutate(
-    MedHouseGrowthRate = calculate_growth_rate(SpreadCAHouseMed),
-    MedHouseChange = calculate_change(SpreadCAHouseMed)
-  )
-
-SpreadCAHouseHigh <- SpreadCAHouseHigh %>%
-  mutate(
-    HighHouseGrowthRate = calculate_growth_rate(SpreadCAHouseHigh),
-    HighHouseChange = calculate_change(SpreadCAHouseHigh)
-  )
-
-SpreadCAOwnerWhite <- SpreadCAOwnerWhite %>%
-  mutate(
-    WhiteOwnerGrowthRate = calculate_growth_rate(SpreadCAOwnerWhite),
-    WhiteOwnerChange = calculate_change(SpreadCAOwnerWhite)
-  )
-
-SpreadCAOwnerBlack <- SpreadCAOwnerBlack %>%
-  mutate(
-    BlackOwnerGrowthRate = calculate_growth_rate(SpreadCAOwnerBlack),
-    BlackOwnerChange = calculate_change(SpreadCAOwnerBlack)
-  )
-
-SpreadCAOwnerLatino <- SpreadCAOwnerLatino %>%
-  mutate(
-    LatinoOwnerGrowthRate = calculate_growth_rate(SpreadCAOwnerLatino),
-    LatinoOwnerChange = calculate_change(SpreadCAOwnerLatino)
-  )
-
-SpreadCAIncome1 <- SpreadCAIncome1 %>%
-  mutate(
-    Income1GrowthRate = calculate_growth_rate(SpreadCAIncome1),
-    Income1Change = calculate_change(SpreadCAIncome1)
-  )
-
-SpreadCAIncome2 <- SpreadCAIncome2 %>%
-  mutate(
-    Income2GrowthRate = calculate_growth_rate(SpreadCAIncome2),
-    Income2Change = calculate_change(SpreadCAIncome2)
-  )
-
-SpreadCAIncome3 <- SpreadCAIncome3 %>%
-  mutate(
-    Income3GrowthRate = calculate_growth_rate(SpreadCAIncome3),
-    Income3Change = calculate_change(SpreadCAIncome3)
-  )
-
-SpreadCAIncome4 <- SpreadCAIncome4 %>%
-  mutate(
-    Income4GrowthRate = calculate_growth_rate(SpreadCAIncome4),
-    Income4Change = calculate_change(SpreadCAIncome4)
-  )
-
-SpreadCAIncome5 <- SpreadCAIncome5 %>%
-  mutate(
-    Income5GrowthRate = calculate_growth_rate(SpreadCAIncome5),
-    Income5Change = calculate_change(SpreadCAIncome5)
-  )
-
-```
-```{r Summarize, echo = FALSE, warning = FALSE, message = FALSE}
-
-SummaryCAPermits <- SpreadCAPermits %>%
-  group_by(County.Name) %>%
-  summarize(NumPermits = sum(NumUnits))
-
-SummaryCALabor <- SpreadCALabor %>% subset(select = c(County.Name, LaborGrowthRate, LaborChange))
-
-SummaryCAPopulation <- SpreadCAPopulation %>% subset(select = c(County.Name, PopGrowthRate, PopChange))
-
-SummaryCARentLow <- SpreadCARentLow %>% subset(select = c(County.Name, LowRentGrowthRate, LowRentChange))
-
-SummaryCARentMed <- SpreadCARentMed %>% subset(select = c(County.Name, MedRentGrowthRate, MedRentChange))
-
-SummaryCARentHigh <- SpreadCARentHigh %>% subset(select = c(County.Name, HighRentGrowthRate, HighRentChange))
-
-SummaryCAHouseLow <- SpreadCAHouseLow %>% subset(select = c(County.Name, LowHouseGrowthRate, LowHouseChange))
-
-SummaryCAHouseMed <- SpreadCAHouseMed %>% subset(select = c(County.Name, MedHouseGrowthRate, MedHouseChange))
-
-SummaryCAHouseHigh <- SpreadCAHouseHigh %>% subset(select = c(County.Name, HighHouseGrowthRate, HighHouseChange))
-
-SummaryCAOwnerWhite <- SpreadCAOwnerWhite %>% subset(select = c(County.Name, WhiteOwnerGrowthRate, WhiteOwnerChange))
-
-SummaryCAOwnerBlack <- SpreadCAOwnerBlack %>% subset(select = c(County.Name, BlackOwnerGrowthRate, BlackOwnerChange))
-
-SummaryCAOwnerLatino<- SpreadCAOwnerLatino %>% subset(select = c(County.Name, LatinoOwnerGrowthRate, LatinoOwnerChange))
-
-SummaryCAIncome1 <- SpreadCAIncome1 %>% subset(select = c(County.Name, Income1GrowthRate, Income1Change))
-
-SummaryCAIncome2 <- SpreadCAIncome2 %>% subset(select = c(County.Name, Income2GrowthRate, Income2Change))
-
-SummaryCAIncome3 <- SpreadCAIncome3 %>% subset(select = c(County.Name, Income3GrowthRate, Income3Change))
-
-SummaryCAIncome4 <- SpreadCAIncome4 %>% subset(select = c(County.Name, Income4GrowthRate, Income4Change))
-
-SummaryCAIncome5 <- SpreadCAIncome5 %>% subset(select = c(County.Name, Income5GrowthRate, Income5Change))
-
-```
-```{r Combine tables, echo = FALSE, warning = FALSE, message = FALSE}
-# Need to figure out better way to do this
-
-# MergeCA1 <- merge(SummaryCAPermits, SummaryCALabor)
-# MergeCA2 <- merge(SummaryCAPopulation, SummaryCARentMed)
-# MergeCA3 <- merge(SummaryCARentHigh, SummaryCARentLow)
-# MergeCA4 <- merge(SummaryCAHouseLow, SummaryCAHouseMed)
-# MergeCA5 <- merge(SummaryCAHouseHigh, MergeCA4)
-# MergeCA6 <- merge(MergeCA1, MergeCA2)
-# MergeCA7 <- merge(MergeCA6, MergeCA3)
-# MergeCA8 <- merge(SummaryCAOwnerWhite, SummaryCAOwnerBlack)
-# MergeCA9 <- merge(MergeCA8, SummaryCAOwnerLatino)
-# MergeCA10 <- merge(MergeCA9, MergeCA5)
-# DataTable <- merge(MergeCA7, MergeCA10)
-
-TableList <- list(SummaryCAPermits, SummaryCALabor, 
-                  SummaryCAPopulation, SummaryCARentMed,
-                  SummaryCARentHigh, SummaryCARentLow, 
-                  SummaryCAHouseLow, SummaryCAHouseMed,
-                  SummaryCAHouseHigh, SummaryCAOwnerWhite, 
-                  SummaryCAOwnerBlack, SummaryCAOwnerLatino,
-                  SummaryCAIncome1, SummaryCAIncome2, 
-                  SummaryCAIncome3, SummaryCAIncome4, 
-                  SummaryCAIncome5)
-
-DataTable <- TableList %>%
-  reduce(left_join, by = "County.Name")
-
-```
-```{r Second calculations, echo = FALSE, warning = FALSE, message = FALSE}
-
-DataTable <- DataTable %>%
-  mutate(LaborRatio = LaborChange/NumPermits,
-         PopRatio = PopChange/NumPermits)
-
-write.csv(DataTable, file = "DataTableCAHousing.csv", row.names = FALSE)
+rentBurdenFinal <- rentBurdenFinal %>%
+  mutate(NAMELSAD = str_sub(Geographic.Area.Name, start = 1, end = -18))
 
 
-FilteredDataTable <- DataTable %>% 
-  filter(LaborRatio >= 0) %>% 
-  mutate(TileSplit = ifelse(LaborRatio > 1, 2, 1),
-         TileSplitInteractive = as.ordered(ifelse(LaborRatio <= 1, 
-                                                  'Workers < Permits', 
-                                                  'Workers > Permits')))
-
-```
-```{r Get map pieces, echo = FALSE, warning = FALSE, message = FALSE}
-us_states <- states(cb = FALSE, class = "sf") 
-
-ca_state <- us_states %>% filter(STUSPS == "CA")
-us_states <- 
-  subset(us_states, 
-         !NAME %in% c(
-           "United States Virgin Islands",
-           "Commonwealth of the Northern Mariana Islands",
-           "Guam",
-           "American Samoa",
-           "Puerto Rico",
-           "Alaska",
-           "Hawaii",
-           "California"
-         ))
-
-
-ca_counties <- counties("CA")
-
-ca_county_names <- list_counties("CA")
-
-ca_water <- area_water("CA", ca_county_names)
-
-ca_water_na <- ca_water %>% 
-  drop_na(FULLNAME) %>% 
-  filter(AWATER > 10000000)
-
-ca_places <- county_subdivisions(state = c("CA"))
-nv_places <- county_subdivisions(state = c("NV"))
-or_places <- county_subdivisions(state = c("OR"))
-ut_places <- county_subdivisions(state = c("UT"))
-az_places <- county_subdivisions(state = c("AZ"))
-id_places <- county_subdivisions(state = c("ID"))
-
-county_subdivisions_map <- rbind(ca_places, nv_places, or_places, ut_places,az_places,id_places)
-
-ca_counties <- st_transform(ca_counties, crs = 4326) #, crs = 4326
-us_states <- st_transform(us_states, crs = 4326) # , crs = 4326
-county_subdivisions_map <- st_transform(county_subdivisions_map, crs = 4326)
-
-ca_counties_bb <- st_as_sfc(st_bbox(ca_counties))
-ca_counties_bb <- st_buffer(ca_counties_bb, dist = 10000)
-
-ca_counties$values <- runif(nrow(ca_counties))
-
-ca_counties_for_merge <- ca_counties %>% mutate(County.Name = NAMELSAD)
-```
-```{r Merge map and data, echo = FALSE, warning = FALSE, message = FALSE}
-
-MapDataTable <- merge(DataTable, ca_counties_for_merge)
-
-MapDataTable <- MapDataTable %>% mutate(LaborRatioSimple = 
-                                          case_when(
-                                            LaborRatio < 0 ~ '-2',
-                                            LaborRatio <= "1" & LaborRatio >= "0" ~ '-1',
-                                            LaborRatio >= "4" ~ '4',
-                                            TRUE ~ as.character(LaborRatio)
-                                          ),
-                                        LaborRatioRounded = as.factor(floor(as.numeric(LaborRatioSimple))))
+houseMapData <- merge(rentBurdenFinal, houseMapClean)
 
 
 ```
-```{r Plot variables, echo = FALSE, warning = FALSE, message = FALSE, include = FALSE}
-reds <- tmaptools::get_brewer_pal("RdGy", 9)
-cols <- c(reds[8], reds[7], reds[4], reds[3], reds[2], reds[1])
 
-RentChange.labs <- c("Lower Quartile",
-                     "Median Quartile",
-                     "Upper Quartile")
-names(RentChange.labs) <- c("LowRentChange",
-                            "MedRentChange",
-                            "HighRentChange")
+```{r get individual tables, echo = FALSE, message = FALSE, warning = FALSE}
+modBurden <- houseMapData %>% filter(variable == "moderateBurdenSum")
 
-HouseChange.labs <- c("Lower Quartile",
-                      "Median Quartile",
-                      "Upper Quartile")
-names(HouseChange.labs) <- c("LowHouseChange",
-                             "MedHouseChange",
-                             "HighHouseChange")
-
-OwnerGrowth.labs <- c("White",
-                      "Black",
-                      "Latino")
-names(OwnerGrowth.labs) <- c("WhiteOwnerGrowthRate",
-                             "BlackOwnerGrowthRate",
-                             "LatinoOwnerGrowthRate")
-
-IncomeChange.labs <- c("Lowest Quintile",
-                       "Second",
-                       "Middle Quintile",
-                       "Fourth",
-                       "Highest Quintile")
-names(IncomeChange.labs) <- c("Income1Change",
-                              "Income2Change",
-                              "Income3Change",
-                              "Income4Change",
-                              "Income5Change")
-
-IncomeGrowth.labs <- c("Lowest Quintile",
-                       "Second",
-                       "Middle Quintile",
-                       "Fourth",
-                       "Highest Quintile")
-names(IncomeGrowth.labs) <- c("Income1GrowthRate",
-                              "Income2GrowthRate",
-                              "Income3GrowthRate",
-                              "Income4GrowthRate",
-                              "Income5GrowthRate")
-
-col1 <- "#AAAAAA" 
-col2 <- "#C7433F"
-
-labels <- c("Lost Workers",
-            "\u22641:1",
-            ">1:1",
-            ">2:1",
-            ">3:1",
-            ">4:1")
-
-dollar_function = scales::dollar_format()
-
-percent_function = scales::percent_format()
-
-comma_function = scales::comma_format()
-
-factorPal <- colorFactor(cols, MapDataTable$LaborRatioRounded)
-```
-
-# **Change in Employed Workers per Housing Permit Issued by County**
-
-California county subdivisions with county-level change in employed workers per housing permit issued from 2014-2019. 
-
-```{r Workers to permits interactive map, echo = FALSE, include = TRUE, message = FALSE, warning = FALSE, out.width="100%"}
-
-# rent_change_pop_up <- function(CountyName) {
-#   
-#   RentChangesPopUp <- subset(DataTable, select = c(County.Name, 
-#                                                    LaborRatio,
-#                                                    LowRentChange,
-#                                                    MedRentChange,
-#                                                    HighRentChange))
-#   
-#   RentChangesPopUpMelt <- RentChangesPopUp %>% 
-#     reshape2::melt(id.vars = c("County.Name","LaborRatio"),
-#                    measure.vars = c("LowRentChange",
-#                                     "MedRentChange",
-#                                     "HighRentChange"))
-#   
-#   RentChangesPopUpMelt$County <- ifelse(RentChangesPopUpMelt$County.Name == CountyName, 1, 2)
-#   
-#   RentChangesPopUpSummary <- RentChangesPopUpMelt %>%
-#     group_by(variable) %>%
-#     mutate(AvgChange = mean(value)) %>%
-#     filter(County.Name == CountyName)
-#   
-#   RentChangesPopUpSummaryMelt <- RentChangesPopUpSummary %>% 
-#     reshape2::melt(variable.name = c("CountyGroup"),
-#                    id.vars = c("County.Name","LaborRatio","RentGroup"="variable"),
-#                    measure.vars = c("value","AvgChange"))
-#   
-#   ggplot(RentChangesPopUpSummaryMelt, 
-#          aes(x = as.factor(CountyGroup), y = value)) +
-#     geom_bar(aes(fill = as.factor(CountyGroup)), 
-#              stat = 'identity', 
-#              color = 'black',
-#              size = 1) 
-#     labs(title = "Change in Rent",
-#          subtitle = "Time: 2014-2019",
-#          x = NULL,
-#          y = "Change") +
-#     scale_fill_manual(name = NULL,
-#                       labels = c(CountyName, "Average Change"),
-#                       values = c("black", "white")) +
-#     scale_x_discrete(breaks=c("1","2"),
-#                      labels=NULL) +
-#     scale_y_continuous(labels=scales::dollar_format()) +
-#     facet_wrap(~variable, labeller = labeller(variable = RentChange.labs)) +
-#     theme_ipsum(grid="Y") +
-#     theme(legend.position = "bottom")
-# }
-
-leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
-  addPolygons(data = MapDataTable$geometry,
-              fillColor = factorPal(MapDataTable$LaborRatioRounded),
-              color = FALSE, # you need to use hex colors
-              fillOpacity = 1,
-              weight = 0.4,
-              popup = ifelse(MapDataTable$LaborRatio >= 0,
-                             paste0(MapDataTable$County.Name, 
-                                    " gained ", 
-                                    prettyNum(round(MapDataTable$LaborRatio,2),
-                                              big.mark = ","),
-                                    " workers for every housing permit issued from 2014 to 2019.",
-                                    "<br/>",
-                                    "<br/>",
-                                    "Workers Gained: ", 
-                                    prettyNum(MapDataTable$LaborChange, 
-                                              big.mark = ","), 
-                                    "<br/>",
-                                    "Permits Issued: ", 
-                                    prettyNum(MapDataTable$NumPermits, 
-                                              big.mark = ",")
-                             ),
-                             paste0(MapDataTable$County.Name, 
-                                    " lost ", 
-                                    prettyNum(abs(round(MapDataTable$LaborRatio,2)), big.mark = ","),
-                                    " workers for every housing permit issued from 2014 to 2019.",
-                                    "<br/>",
-                                    "<br/>",
-                                    "Workers Lost: ", 
-                                    prettyNum(abs(MapDataTable$LaborChange), 
-                                              big.mark = ","), 
-                                    "<br/>",
-                                    "Permits Issued: ", 
-                                    prettyNum(MapDataTable$NumPermits,
-                                              big.mark = ",")
-                             ))) %>%
-  leaflet::addLegend(position = "bottomleft",
-                     pal = factorPal,
-                     values = MapDataTable$LaborRatioRounded,
-                     title = "Workers:Permits",
-                     opacity = 1,
-                     labFormat = function(type, cuts, p) {
-                       paste0(labels)
-                     }) %>%
-  addPolygons(data = ca_places$geometry,
-              fill = FALSE,
-              color = "#000000", 
-              fillOpacity = 1,
-              weight = 0.8) %>% 
-  addPolygons(data = ca_water_na$geometry,
-              fillColor = "#000000",
-              color = FALSE, # you need to use hex colors
-              fillOpacity = 1,
-              weight = 2) %>%
-  setMapWidgetStyle(list(background= "black")) 
-```
-
-The following analyses compare counties that grew in employed workers from 2014-2019 by whether the county issued more housing permits than the number of new workers (light grey) or less housing permits than the number of new workers (red).
-
-### **The fastest growing counties issued the fewest housing permits per new worker.**
-
-Workers per housing permit ratio for each county. Counties are ordered from slowest worker growth (left side) to fastest worker growth (right side). Data is from 2014-2019. Analysis only shows counties that grew in workers from 2014-2019.
-
-```{r Growth speed, echo = FALSE, warning = FALSE, message = FALSE, out.width="100%"}
-
-LaborGrowth <- subset(FilteredDataTable, select = c(County.Name, 
-                                                    LaborRatio,
-                                                    LaborChange,
-                                                    LaborGrowthRate,
-                                                    TileSplitInteractive))
-LaborGrowth <- LaborGrowth %>%
-  arrange(LaborGrowthRate) %>%
-  mutate(LaborGrowthRank = row_number())
-
-RankPlotInteractive <- ggplot(LaborGrowth, 
-                              aes(x = as.factor(LaborGrowthRank), 
-                                  y = LaborRatio,
-                                  text = paste("County:", County.Name, 
-                                               "\nGrowth Rate:",
-                                               scales::percent(round(LaborGrowthRate,3)),
-                                               "\nWorkers Per Permit:",
-                                               round(LaborRatio,2)))) +
-  geom_bar(aes(fill = (TileSplitInteractive)), 
-           stat = 'identity', 
-           color = 'black',
-           size = 1) +
-  labs(title = "Workers per Permit by County's Rank in Worker Growth",
-       subtitle = "Time: 2014-2019",
-       x = NULL,
-       y = "Workers per Permit") + 
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_discrete(breaks=c("6","46"),
-                   labels = c("Slowest Growth", "Fastest Growth")) +
-  scale_y_continuous(breaks = c(1:6)) +
-  theme_ipsum(grid="Y") +
-  theme(legend.text = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(RankPlotInteractive, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h"))
+modBurdenAll <- modBurden %>% filter(incomeClean == "All Ren")
+modBurdenBelow35 <- modBurden %>% filter(incomeClean == "Below $")
+modBurden3550 <- modBurden %>% filter(incomeClean == "$35,000")
+modBurden5075 <- modBurden %>% filter(incomeClean == "$50,000")
+modBurden75100 <- modBurden %>% filter(incomeClean == "$75,000")
+modBurdenOver100 <- modBurden %>% filter(incomeClean == "$100,00")
 
 ```
 
-### **Population increased more in counties where workforce growth outnumbered issued housing permits.**
+```{r Map Variables, echo = FALSE, message = FALSE, warning = FALSE}
 
-Population change for counties grouped by Workers:Permits < 1:1 (permits outnumbered workers) and Workers:Permits > 1:1 (workers outnumbered permits). Data is from 2014-2019. Analysis only shows counties that grew in workers from 2014-2019.
+fillOpacity = 0.85
+legendValues <- c(0, 0.5, 1.0)
 
-```{r Workers to permits and population, echo = FALSE, warning = FALSE, message = FALSE, out.width="100%"}
-
-PopChanges <- subset(FilteredDataTable, select = c(County.Name, 
-                                                   LaborRatio,
-                                                   PopChange,
-                                                   TileSplit,
-                                                   TileSplitInteractive))
-
-PopChangesMelt <- PopChanges %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit","TileSplitInteractive"),
-                 measure.vars = c("PopChange"))
-
-PopChangesSummary <- PopChangesMelt %>%
-  group_by(TileSplit, TileSplitInteractive, variable) %>%
-  summarize(AvgChange = mean(value))
-
-PopPlotInteractive <- ggplot(PopChangesSummary, 
-                             aes(x = as.factor(TileSplit), 
-                                 y = AvgChange)) +
-  geom_bar(aes(fill = as.factor(TileSplitInteractive)), 
-           stat = 'identity', 
-           color = 'black',
-           size = 1) +
-  geom_point(data = PopChangesMelt, aes(x = TileSplit, 
-                                        y = value,
-                                        text = paste("County:", County.Name, 
-                                                     "\nPopulation Change:",
-                                                     comma_function(value),
-                                                     "\nWorkers per Permit:",
-                                                     round(LaborRatio,2))), 
-             alpha=.75, 
-             color = 'black') +
-  labs(title = "Average Change in Population",
-       subtitle = "Time: 2014-2019",
-       x = NULL,
-       y = "Change") + 
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_discrete(breaks=c("1","2"),
-                   labels=NULL) +
-  scale_y_continuous(labels=comma_function) +
-  theme_ipsum(grid="Y") +
-  theme(legend.text = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(PopPlotInteractive, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h"))
+pal <- colorNumeric(
+  palette = "YlOrRd",
+  domain = houseMapData$value)
 
 ```
 
-### **Rent increased more in counties where workforce growth outnumbered issued housing permits.**
+# **All Rent Burdened Residents**
 
-Rent change for counties grouped by Workers:Permits < 1:1 (permits outnumbered workers) and Workers:Permits > 1:1 (workers outnumbered permits). Data is from 2014-2019. Analysis only shows counties that grew in workers from 2014-2019.
-
-```{r Workers to permits and rent, echo = FALSE, warning = FALSE, message = FALSE, out.width="100%"}
-
-RentChanges <- subset(FilteredDataTable, select = c(County.Name, 
-                                                    LaborRatio,
-                                                    LowRentChange,
-                                                    MedRentChange,
-                                                    HighRentChange,
-                                                    TileSplit,
-                                                    TileSplitInteractive))
-
-RentChangesMelt <- RentChanges %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit","TileSplitInteractive"),
-                 measure.vars = c("LowRentChange",
-                                  "MedRentChange",
-                                  "HighRentChange"))
-
-RentChangesSummary <- RentChangesMelt %>%
-  group_by(TileSplit, TileSplitInteractive, variable) %>%
-  summarize(AvgChange = mean(value))
-
-RentPlotInteractive <- ggplot(RentChangesSummary, 
-                              aes(x = as.factor(TileSplit), 
-                                  y = AvgChange)) +
-  geom_bar(aes(fill = as.factor(TileSplitInteractive)), 
-           stat = 'identity', 
-           color = 'black',
-           size = 1) +
-  geom_point(data = RentChangesMelt, aes(x = TileSplit, 
-                                         y = value,
-                                         text = paste("County:", County.Name, 
-                                                      "\nRent Change:",
-                                                      dollar_function(value),
-                                                      "\nWorkers per Permit:",
-                                                      round(LaborRatio,2))), 
-             alpha=.75, 
-             color = 'black') +
-  labs(title = "Change in Rent by County",
-       subtitle = "Time: 2014-2019",
-       x = NULL,
-       y = "Change") + 
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_discrete(breaks=c("1","2"),
-                   labels=NULL) +
-  scale_y_continuous(labels=scales::dollar_format()) +
-  facet_wrap(~variable, labeller = labeller(variable = RentChange.labs)) +
-  theme_ipsum(grid="Y") +
-  theme(legend.text = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(RentPlotInteractive, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h"))
-
-```
-
-### **Cost of buying a home increased more in counties where workforce growth outnumbered issued housing permits.**
-
-Change in cost of buying home for counties grouped by Workers:Permits < 1:1 (permits outnumbered workers) and Workers:Permits > 1:1 (workers outnumbered permits). Data is from 2014-2019. Analysis only shows counties that grew in workers from 2014-2019.
-
-```{r Workers to permits and house cost, echo = FALSE, warning = FALSE, message = FALSE, out.width="100%"}
-
-HouseChanges <- subset(FilteredDataTable, select = c(County.Name, 
-                                                     LaborRatio,
-                                                     LowHouseChange,
-                                                     MedHouseChange,
-                                                     HighHouseChange,
-                                                     TileSplit,
-                                                     TileSplitInteractive))
-
-HouseChangesMelt <- HouseChanges %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit", "TileSplitInteractive"),
-                 measure.vars = c("LowHouseChange",
-                                  "MedHouseChange",
-                                  "HighHouseChange"))
-
-HouseChangesSummary <- HouseChangesMelt %>%
-  group_by(TileSplit, TileSplitInteractive, variable) %>%
-  summarize(AvgChange = mean(value))
+```{r Moderate Burden Map, echo = FALSE, message = FALSE, warning = FALSE}
 
 
-HousePlotInteractive <- ggplot(HouseChangesSummary, 
-                               aes(x = as.factor(TileSplit), 
-                                   y = AvgChange)) +
-  geom_bar(aes(fill = as.factor(TileSplitInteractive)), 
-           stat = 'identity', 
-           color = 'black',
-           size = 1) +
-  geom_point(data = HouseChangesMelt, aes(x = TileSplit, 
-                                          y = value,
-                                          text = paste("County:", HouseChangesMelt$County.Name,
-                                                       "\nCost Change:",
-                                                       dollar_function(HouseChangesMelt$value),
-                                                       "\nWorkers per Permit:",
-                                                       round(HouseChangesMelt$LaborRatio,2))), 
-             alpha=.75, 
-             color = 'black') +
-  labs(title = "Change in Home Cost by County",
-       subtitle = "Time: 2014-2019",
-       x = NULL,
-       y = "Change") + 
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_discrete(breaks=c("1","2"),
-                   labels=NULL) +
-  scale_y_continuous(labels=scales::dollar_format()) +
-  facet_wrap(~variable, labeller = labeller(variable = HouseChange.labs)) +
-  theme_ipsum(grid="Y") +
-  theme(legend.text = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(HousePlotInteractive, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h"))
-```
-
-### **Black and Latino homeownership grew slower in counties where workforce growth outnumbered issued housing permits.**
-
-Homeowner growth for counties grouped by Workers:Permits < 1:1 (permits outnumbered workers) and Workers:Permits > 1:1 (workers outnumbered permits). Data is from 2014-2019. Analysis only shows counties that grew in workers from 2014-2019.
-
-```{r Workers to permits and home owners, echo = FALSE, warning = FALSE, message = FALSE, out.width="100%"}
-
-OwnerChanges <- subset(FilteredDataTable, select = c(County.Name, 
-                                                     LaborRatio,
-                                                     WhiteOwnerGrowthRate,
-                                                     BlackOwnerGrowthRate,
-                                                     LatinoOwnerGrowthRate,
-                                                     TileSplit,
-                                                     TileSplitInteractive))
-
-OwnerChangesMelt <- OwnerChanges %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit","TileSplitInteractive"),
-                 measure.vars = c("WhiteOwnerGrowthRate",
-                                  "BlackOwnerGrowthRate",
-                                  "LatinoOwnerGrowthRate"))
-
-OwnerChangesSummary <- OwnerChangesMelt %>%
-  filter(County.Name != 'Mono County' & 
-           County.Name != 'Tehama County' & 
-           County.Name != 'Sierra County') %>%
-  group_by(TileSplit, TileSplitInteractive, variable) %>%
-  summarize(AvgChange = mean(value))
-
-OwnerPlot <- ggplot(OwnerChangesSummary, aes(x = as.factor(TileSplit), y = AvgChange)) +
-  geom_bar(aes(fill = as.factor(TileSplitInteractive)), 
-           stat = 'identity', 
-           color = 'black',
-           size = 1) +
-  geom_point(data = OwnerChangesMelt, aes(x = TileSplit,
-                                          y = value,
-                                          text = paste("County:", 
-                                                       County.Name,
-                                                       "\nGrowth:",
-                                                       percent_function(
-                                                         round(value,2)),
-                                                       "\nWorkers per Permit:",
-                                                       round(LaborRatio,2))), 
-             alpha=.75, 
-             color = 'black') +
-  labs(title = "Growth in Homeowners by County",
-       subtitle = "Time: 2014-2019",
-       x = NULL,
-       y = "Growth") + 
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_discrete(breaks=c("1","2"),
-                   labels=NULL) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  facet_wrap(~variable, labeller = labeller(variable = OwnerGrowth.labs)) +
-  theme_ipsum(grid="Y") +
-  theme(legend.text = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(OwnerPlot, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h"))
-
-```
-
-### **Household income increased more in counties where workforce growth outnumbered issued housing permits.**
-
-Household income change for counties grouped by Workers:Permits < 1:1 (permits outnumbered workers) and Workers:Permits > 1:1 (workers outnumbered permits). Quintile is the American Community Survey variable that parses the distribution of incomes. Data is from 2014-2019. Analysis only shows counties that grew in workers from 2014-2019.
-
-```{r Workers to permits and salary change, echo = FALSE, warning = FALSE, message = FALSE, out.width="100%"}
-
-SalaryChanges <- subset(FilteredDataTable, select = c(County.Name, 
-                                                      LaborRatio,
-                                                      Income1Change,
-                                                      Income2Change,
-                                                      Income3Change,
-                                                      Income4Change,
-                                                      Income5Change,
-                                                      TileSplit,
-                                                      TileSplitInteractive))
-
-SalaryChangesMelt <- SalaryChanges %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit","TileSplitInteractive"),
-                 measure.vars = c("Income1Change",
-                                  "Income2Change",
-                                  "Income3Change",
-                                  "Income4Change",
-                                  "Income5Change"))
-
-SalaryChangesSummary <- SalaryChangesMelt %>%
-  group_by(TileSplit, TileSplitInteractive, variable) %>%
-  summarize(AvgChange = mean(value))
-
-SalaryChangePlot <- ggplot(SalaryChangesSummary, aes(x = as.factor(TileSplit), y = AvgChange)) +
-  geom_bar(aes(fill = as.factor(TileSplitInteractive)), 
-           stat = 'identity', 
-           color = 'black',
-           size = 1) +
-  geom_point(data = SalaryChangesMelt, aes(x = TileSplit,
-                                           y = value,
-                                           text = paste("County:", 
-                                                        County.Name,
-                                                        "\nChange:",
-                                                        dollar_function(
-                                                          round(value,2)),
-                                                        "\nWorkers per Permit:",
-                                                        round(LaborRatio,2))), 
-             alpha=.75, 
-             color = 'black') +
-  labs(title = "Change in Household Income by County",
-       subtitle = "Time: 2014-2019",
-       x = NULL,
-       y = "Change") + 
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_discrete(breaks=c("1","2"),
-                   labels=NULL) +
-  scale_y_continuous(labels = scales::dollar_format(accuracy = 1)) +
-  facet_wrap(~variable, labeller = labeller(variable = IncomeChange.labs), nrow = 1) +
-  theme_ipsum(grid="Y") +
-  theme(legend.text = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(SalaryChangePlot, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h"))
-
-```
-
-### **Household income grew faster in counties where workforce growth outnumbered issued housing permits.**
-
-Household income growth for counties grouped by Workers:Permits < 1:1 (permits outnumbered workers) and Workers:Permits > 1:1 (workers outnumbered permits). Quintile is the American Community Survey variable that parses the distribution of incomes. Data is from 2014-2019. Analysis only shows counties that grew in workers from 2014-2019.
-
-```{r Workers to permits and salary growth, echo = FALSE, warning = FALSE, message = FALSE, out.width="100%"}
-
-SalaryGrowth <- subset(FilteredDataTable, select = c(County.Name, 
-                                                     LaborRatio,
-                                                     Income1GrowthRate,
-                                                     Income2GrowthRate,
-                                                     Income3GrowthRate,
-                                                     Income4GrowthRate,
-                                                     Income5GrowthRate,
-                                                     TileSplit,
-                                                     TileSplitInteractive))
-
-SalaryGrowthMelt <- SalaryGrowth %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit","TileSplitInteractive"),
-                 measure.vars = c("Income1GrowthRate",
-                                  "Income2GrowthRate",
-                                  "Income3GrowthRate",
-                                  "Income4GrowthRate",
-                                  "Income5GrowthRate"))
-
-SalaryGrowthSummary <- SalaryGrowthMelt %>%
-  group_by(TileSplit, TileSplitInteractive, variable) %>%
-  summarize(AvgChange = mean(value))
-
-SalaryGrowthPlot <- ggplot(SalaryGrowthSummary, aes(x = as.factor(TileSplit), y = AvgChange)) +
-  geom_bar(aes(fill = as.factor(TileSplitInteractive)), 
-           stat = 'identity', 
-           color = 'black',
-           size = 1) +
-  geom_point(data = SalaryGrowthMelt, aes(x = TileSplit,
-                                          y = value,
-                                          text = paste("County:", 
-                                                       County.Name,
-                                                       "\nGrowth:",
-                                                       percent_function(
-                                                         round(value,2)),
-                                                       "\nWorkers per Permit:",
-                                                       round(LaborRatio,2))), 
-             alpha=.75, 
-             color = 'black') +
-  labs(title = "Growth in Household Income by County",
-       subtitle = "Time: 2014-2019",
-       x = NULL,
-       y = "Growth") + 
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_discrete(breaks=c("1","2"),
-                   labels=NULL) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  facet_wrap(~variable, labeller = labeller(variable = IncomeGrowth.labs), nrow = 1) +
-  theme_ipsum(grid="Y") +
-  theme(legend.text = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(SalaryGrowthPlot, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h"))
-
-```
-
-```{r Income growth to house price growth, echo=FALSE, warning=FALSE, message=FALSE, fig.height=6, fig.width=6}
-HouseSalaryGrowth <- subset(FilteredDataTable, select = c(County.Name, 
-                                                          LaborRatio,
-                                                          Income1GrowthRate,
-                                                          Income3GrowthRate,
-                                                          Income5GrowthRate,
-                                                          LowHouseGrowthRate,
-                                                          MedHouseGrowthRate,
-                                                          HighHouseGrowthRate,
-                                                          TileSplit,
-                                                          TileSplitInteractive))
-
-HouseSalaryGrowthMelt <- HouseSalaryGrowth %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit","TileSplitInteractive"),
-                 measure.vars = c("Income1GrowthRate",
-                                  "Income3GrowthRate",
-                                  "Income5GrowthRate",
-                                  "LowHouseGrowthRate",
-                                  "MedHouseGrowthRate",
-                                  "HighHouseGrowthRate"))
-
-HouseSalaryGrowthMelt <- HouseSalaryGrowthMelt %>%
-  mutate(Group = case_when(
-    variable == "Income1GrowthRate" | variable == "LowHouseGrowthRate" ~ '1',
-    variable == "Income3GrowthRate" | variable == "MedHouseGrowthRate" ~ '2',
-    variable == "Income5GrowthRate" | variable == "HighHouseGrowthRate" ~ '3',
-    TRUE ~ 'NA'
-  ),
-  Class = case_when(
-    variable == "Income1GrowthRate" | 
-      variable == "Income3GrowthRate" | 
-      variable == "Income5GrowthRate" ~ 'Income',
-    variable == "LowHouseGrowthRate" | 
-      variable == "MedHouseGrowthRate" | 
-      variable == "HighHouseGrowthRate" ~ 'House',
-    TRUE ~ 'NA'
-  )) %>%
-  subset(select = -c(variable)) %>%
-  spread(Class, value) 
-
-
-IncomeHousePlot <- ggplot(HouseSalaryGrowthMelt, 
-                         aes(x = Income, 
-                             y = House)) +
-  geom_abline(intercept = 0 , slope = 1) +
-  geom_point(aes(fill = TileSplitInteractive, 
-                 text = paste("County:", 
-                              County.Name,                              
-                              "\nHouse Price Growth:",
-                              percent_function(
-                                round(House,2)),
-                              "\nIncome Growth:",
-                              percent_function(
-                                round(Income,2)),
-                              "\nWorkers per Permit:",
-                              round(LaborRatio,2))),
-             stat = 'identity',
-             color = 'black',
-             size = 2,
-             alpha = .7) +
-  labs(title = "House Price by Income Growth",
-       subtitle = "Time: 2014-2019",
-       x = "Income Growth",
-       y = "House Price Growth") +
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1),
-                     limits = c(-0.2, 0.8)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
-                     limits = c(-0.2, 0.8)) +
-  facet_wrap(~Group) +
-  theme_ipsum() +
-  theme(legend.text = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(IncomeHousePlot, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h", x = 0, y = 1))
-
-```
-
-```{r Income growth to rent growth, echo = FALSE, warning = FALSE, message = FALSE, fig.height=6, fig.width=6}
-RentSalaryGrowth <- subset(FilteredDataTable, select = c(County.Name, 
-                                                          LaborRatio,
-                                                          Income1GrowthRate,
-                                                          Income3GrowthRate,
-                                                          Income5GrowthRate,
-                                                          LowRentGrowthRate,
-                                                          MedRentGrowthRate,
-                                                          HighRentGrowthRate,
-                                                          TileSplit,
-                                                          TileSplitInteractive))
-
-RentSalaryGrowthMelt <- RentSalaryGrowth %>% 
-  reshape2::melt(id.vars = c("County.Name","LaborRatio","TileSplit","TileSplitInteractive"),
-                 measure.vars = c("Income1GrowthRate",
-                                  "Income3GrowthRate",
-                                  "Income5GrowthRate",
-                                  "LowRentGrowthRate",
-                                  "MedRentGrowthRate",
-                                  "HighRentGrowthRate"))
-
-RentSalaryGrowthMelt <- RentSalaryGrowthMelt %>%
-  mutate(Group = case_when(
-    variable == "Income1GrowthRate" | variable == "LowRentGrowthRate" ~ '1',
-    variable == "Income3GrowthRate" | variable == "MedRentGrowthRate" ~ '2',
-    variable == "Income5GrowthRate" | variable == "HighRentGrowthRate" ~ '3',
-    TRUE ~ 'NA'
-  ),
-  Class = case_when(
-    variable == "Income1GrowthRate" | 
-      variable == "Income3GrowthRate" | 
-      variable == "Income5GrowthRate" ~ 'Income',
-    variable == "LowRentGrowthRate" | 
-      variable == "MedRentGrowthRate" | 
-      variable == "HighRentGrowthRate" ~ 'Rent',
-    TRUE ~ 'NA'
-  )) %>%
-  subset(select = -c(variable)) %>%
-  spread(Class, value) 
-
-
-IncomeRentPlot <- ggplot(RentSalaryGrowthMelt, 
-                         aes(x = Income, 
-                             y = Rent)) +
-  geom_abline(intercept = 0 , slope = 1) +
-  geom_point(aes(fill = TileSplitInteractive, 
-                 text = paste("County:", 
-                              County.Name,                              
-                              "\nRent Growth:",
-                              percent_function(
-                                round(Rent,2)),
-                              "\nIncome Growth:",
-                              percent_function(
-                                round(Income,2)),
-                              "\nWorkers per Permit:",
-                              round(LaborRatio,2))),
-             stat = 'identity',
-             color = 'black',
-             size = 2,
-             alpha = .7) +
-  labs(title = "Rent by Income Growth",
-       subtitle = "Time: 2014-2019",
-       x = "Income Growth",
-       y = "Rent Growth") +
-  scale_fill_manual(name = NULL,
-                    values = c(col1, col2)) +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1),
-                     limits = c(-0.2, 0.8)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
-                     limits = c(-0.2, 0.8)) +
-  facet_wrap(~Group) +
-  theme_ipsum() +
-  theme(legend.text = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        axis.title.y = element_text(size = 12))
-
-ggplotly(IncomeRentPlot, tooltip = c("text")) %>% 
-  layout(legend = list(orientation = "h", x = 0, y = 1))
-
+leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>% 
+  addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
+  addPolygons(data = modBurdenAll$geometry,
+              fillColor = pal(modBurdenAll$value),
+              group = c("All Renter Households"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(modBurdenAll$geographicClean, 
+                             ": ", 
+                             scales::percent(modBurdenAll$value,2),  
+                             " of all renters are rent burdened.")) %>%
+  addPolygons(data = modBurdenBelow35$geometry,
+              fillColor = pal(modBurdenBelow35$value),
+              group = c("Below $35,000"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(modBurdenBelow35$geographicClean, 
+                             ": ", 
+                             scales::percent(modBurdenBelow35$value,2),  
+                             " of renters earning less than $35,000 annually are rent burdened.")) %>%
+  addPolygons(data = modBurden3550$geometry,
+              fillColor = pal(modBurden3550$value),
+              group = c("$35,000 - $49,999"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(modBurden3550$geographicClean, 
+                             ": ", 
+                             scales::percent(modBurden3550$value,2),  
+                             " of renters earning $35,000 - $49,999 annually are rent burdened.")) %>%
+  addPolygons(data = modBurden5075$geometry,
+              fillColor = pal(modBurden5075$value),
+              group = c("$50,000 - $74,999"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(modBurden5075$geographicClean, 
+                             ": ", 
+                             scales::percent(modBurden5075$value,2),  
+                             " of renters earning $50,000 - $74,999 annually are rent burdened.")) %>%
+  addPolygons(data = modBurden75100$geometry,
+              fillColor = pal(modBurden75100$value),
+              group = c("$75,000 - $99,999"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(modBurden75100$geographicClean, 
+                             ": ", 
+                             scales::percent(modBurden75100$value,2),  
+                             " of renters earning $75,000 - $99,999 annually are rent burdened.")) %>%
+  addPolygons(data = modBurdenOver100$geometry,
+              fillColor = pal(modBurdenOver100$value),
+              group = c("Over $100,000"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(modBurdenOver100$geographicClean, 
+                             ": ", 
+                             scales::percent(modBurdenOver100$value,2),  
+                             " of renters earning over $100,000 annually are rent burdened.")) %>%
+  addProviderTiles(providers$Stamen.TonerLabels,
+                   group = "Location Labels") %>%
+  addLayersControl(
+    baseGroups = c("All Renter Households", 
+                   "Below $35,000",
+                   "$35,000 - $49,999", 
+                   "$50,000 - $74,999", 
+                   "$50,000 - $74,999", 
+                   "$75,000 - $99,999",
+                   "Over $100,000"),
+    overlayGroups = c("Location Labels"),
+    options = layersControlOptions(collapsed=FALSE)) %>% 
+  addLegendNumeric(position = "topright",
+                   pal = pal,
+                   values = c(0,1),
+                   bins = 4,
+                   title = "% Burdened",
+                   numberFormat = scales::percent,
+                   tickLength = 4,
+                   fillOpacity = 1) %>%
+  htmlwidgets::onRender("
+        function() {
+            $('.leaflet-control-layers-list').prepend('<label style=\"text-align:center\">Annual Income</label>');
+        }
+    ")
 ```
