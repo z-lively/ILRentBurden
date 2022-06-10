@@ -1,0 +1,7 @@
+name: "California Housing"
+navbar:
+  title: "California Housing"
+  left:
+    - text: "Analysis"
+      href: index.html
+output_dir: "docs"
