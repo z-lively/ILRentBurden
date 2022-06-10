@@ -6,6 +6,6 @@ navbar:
       href: allBurden.html
     - text: "Moderate Burden"
       href: moderateBurden.html
-    - text: "Moderate Burden"
-      href: moderateBurden.html
+    - text: "Severe Burden"
+      href: severeBurden.html
 output_dir: "docs"

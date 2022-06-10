@@ -16,7 +16,9 @@ display: none;
 <div class="col-sm-8">
 
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
 library(knitr)
 library(tidyverse)
 library(leaflet)
@@ -27,7 +29,7 @@ library(leaflegend)
 library(widgetframe)
 ```
 
-```{r load data, include = FALSE}
+```{r Load Data, include = FALSE}
 setwd("C:/Users/zaliv/OneDrive/Desktop/Data Projects/ILRentBurden/ILRentBurden")
 
 rentBurdenData <- read.csv('RentBurden.csv')
@@ -36,7 +38,7 @@ houseMap <- st_read("tl_2018_17_sldl.shp")
 
 ```
 
-```{r, prepare data, echo = FALSE, message = FALSE, warning = FALSE}
+```{r, Prepare Data}
 
 houseMapClean <- houseMap %>% filter(GEOID != "17ZZZ")
 
@@ -45,7 +47,7 @@ rentBurdenData <- rentBurdenData %>%
          noBurden = as.numeric(gsub("%", "", No.Burden))*.01,
          moderateBurden = as.numeric(gsub("%", "", Moderate.Cost.Burden))*.01,
          severeBurden = as.numeric(gsub("%", "", Severe.Cost.Burden))*.01,
-         moderateBurdenSum = moderateBurden + severeBurden,
+         totalBurden = moderateBurden + severeBurden,
          geographicClean = sub("\\(.*", "", Geographic.Area.Name),
          geographicClean = substr(geographicClean, 
                                   start = 1, 
@@ -67,19 +69,19 @@ houseMapData <- merge(rentBurdenFinal, houseMapClean)
 
 ```
 
-```{r get individual tables, echo = FALSE, message = FALSE, warning = FALSE}
-modBurden <- houseMapData %>% filter(variable == "moderateBurdenSum")
+```{r Create Individual Tables}
+totalBurden <- houseMapData %>% filter(variable == "totalBurden")
 
-modBurdenAll <- modBurden %>% filter(incomeClean == "All Ren")
-modBurdenBelow35 <- modBurden %>% filter(incomeClean == "Below $")
-modBurden3550 <- modBurden %>% filter(incomeClean == "$35,000")
-modBurden5075 <- modBurden %>% filter(incomeClean == "$50,000")
-modBurden75100 <- modBurden %>% filter(incomeClean == "$75,000")
-modBurdenOver100 <- modBurden %>% filter(incomeClean == "$100,00")
+totalBurdenAll <- totalBurden %>% filter(incomeClean == "All Ren")
+totalBurdenBelow35 <- totalBurden %>% filter(incomeClean == "Below $")
+totalBurden3550 <- totalBurden %>% filter(incomeClean == "$35,000")
+totalBurden5075 <- totalBurden %>% filter(incomeClean == "$50,000")
+totalBurden75100 <- totalBurden %>% filter(incomeClean == "$75,000")
+totalBurdenOver100 <- totalBurden %>% filter(incomeClean == "$100,00")
 
 ```
 
-```{r Map Variables, echo = FALSE, message = FALSE, warning = FALSE}
+```{r Map Variables}
 
 fillOpacity = 0.85
 legendValues <- c(0, 0.5, 1.0)
@@ -94,70 +96,70 @@ pal <- colorNumeric(
 
 Percentage of households that are rent burdened (rent ≥ 30% of annual income). Data is from the 2019 5-year American Community Survey.
 
-```{r Moderate Burden Map, echo = FALSE, message = FALSE, warning = FALSE}
+```{r Total Burden Map}
 
 
 leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>% 
   addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
-  addPolygons(data = modBurdenAll$geometry,
-              fillColor = pal(modBurdenAll$value),
+  addPolygons(data = totalBurdenAll$geometry,
+              fillColor = pal(totalBurdenAll$value),
               group = c("All Renter Households"),
               color = 'black', # you need to use hex colors
               fillOpacity = fillOpacity,
               weight = 1,
-              popup = paste0(modBurdenAll$geographicClean, 
+              popup = paste0(totalBurdenAll$geographicClean, 
                              ": ", 
-                             scales::percent(modBurdenAll$value,2),  
+                             scales::percent(totalBurdenAll$value,2),  
                              " of all renters are rent burdened.")) %>%
-  addPolygons(data = modBurdenBelow35$geometry,
-              fillColor = pal(modBurdenBelow35$value),
+  addPolygons(data = totalBurdenBelow35$geometry,
+              fillColor = pal(totalBurdenBelow35$value),
               group = c("Below $35,000"),
               color = 'black', # you need to use hex colors
               fillOpacity = fillOpacity,
               weight = 1,
-              popup = paste0(modBurdenBelow35$geographicClean, 
+              popup = paste0(totalBurdenBelow35$geographicClean, 
                              ": ", 
-                             scales::percent(modBurdenBelow35$value,2),  
+                             scales::percent(totalBurdenBelow35$value,2),  
                              " of renters earning less than $35,000 annually are rent burdened.")) %>%
-  addPolygons(data = modBurden3550$geometry,
-              fillColor = pal(modBurden3550$value),
+  addPolygons(data = totalBurden3550$geometry,
+              fillColor = pal(totalBurden3550$value),
               group = c("$35,000 - $49,999"),
               color = 'black', # you need to use hex colors
               fillOpacity = fillOpacity,
               weight = 1,
-              popup = paste0(modBurden3550$geographicClean, 
+              popup = paste0(totalBurden3550$geographicClean, 
                              ": ", 
-                             scales::percent(modBurden3550$value,2),  
+                             scales::percent(totalBurden3550$value,2),  
                              " of renters earning $35,000 - $49,999 annually are rent burdened.")) %>%
-  addPolygons(data = modBurden5075$geometry,
-              fillColor = pal(modBurden5075$value),
+  addPolygons(data = totalBurden5075$geometry,
+              fillColor = pal(totalBurden5075$value),
               group = c("$50,000 - $74,999"),
               color = 'black', # you need to use hex colors
               fillOpacity = fillOpacity,
               weight = 1,
-              popup = paste0(modBurden5075$geographicClean, 
+              popup = paste0(totalBurden5075$geographicClean, 
                              ": ", 
-                             scales::percent(modBurden5075$value,2),  
+                             scales::percent(totalBurden5075$value,2),  
                              " of renters earning $50,000 - $74,999 annually are rent burdened.")) %>%
-  addPolygons(data = modBurden75100$geometry,
-              fillColor = pal(modBurden75100$value),
+  addPolygons(data = totalBurden75100$geometry,
+              fillColor = pal(totalBurden75100$value),
               group = c("$75,000 - $99,999"),
               color = 'black', # you need to use hex colors
               fillOpacity = fillOpacity,
               weight = 1,
-              popup = paste0(modBurden75100$geographicClean, 
+              popup = paste0(totalBurden75100$geographicClean, 
                              ": ", 
-                             scales::percent(modBurden75100$value,2),  
+                             scales::percent(totalBurden75100$value,2),  
                              " of renters earning $75,000 - $99,999 annually are rent burdened.")) %>%
-  addPolygons(data = modBurdenOver100$geometry,
-              fillColor = pal(modBurdenOver100$value),
+  addPolygons(data = totalBurdenOver100$geometry,
+              fillColor = pal(totalBurdenOver100$value),
               group = c("Over $100,000"),
               color = 'black', # you need to use hex colors
               fillOpacity = fillOpacity,
               weight = 1,
-              popup = paste0(modBurdenOver100$geographicClean, 
+              popup = paste0(totalBurdenOver100$geographicClean, 
                              ": ", 
-                             scales::percent(modBurdenOver100$value,2),  
+                             scales::percent(totalBurdenOver100$value,2),  
                              " of renters earning over $100,000 annually are rent burdened.")) %>%
   addProviderTiles(providers$Stamen.TonerLabels,
                    group = "Location Labels") %>%
