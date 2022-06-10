@@ -90,7 +90,9 @@ pal <- colorNumeric(
 
 ```
 
-# **All Rent Burdened Residents**
+# **Total Burden**
+
+Percentage of households that are rent burdened (rent ≥ 30% of annual income). Data is from the 2019 5-year American Community Survey.
 
 ```{r Moderate Burden Map, echo = FALSE, message = FALSE, warning = FALSE}
 
