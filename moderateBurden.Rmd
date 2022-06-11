@@ -1,0 +1,188 @@
+---
+title: Moderate Burden
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+<style type="text/css">
+.title {
+display: none;
+}
+</style>
+
+<div class="row" style="padding-top: 0px;">
+
+<div class="col-sm-8">
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+library(knitr)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(leaflet.extras)
+library(leaflegend)
+```
+
+```{r Load Data, include = FALSE}
+setwd("C:/Users/zaliv/OneDrive/Desktop/Data Projects/ILRentBurden/ILRentBurden")
+
+rentBurdenData <- read.csv('RentBurden.csv')
+
+houseMap <- st_read("tl_2018_17_sldl.shp")
+
+```
+
+```{r, Prepare Data}
+
+houseMapClean <- houseMap %>% filter(GEOID != "17ZZZ")
+
+rentBurdenData <- rentBurdenData %>%
+  mutate(incomeClean = str_sub(Income, 1, 7),
+         noBurden = as.numeric(gsub("%", "", No.Burden))*.01,
+         moderateBurden = as.numeric(gsub("%", "", Moderate.Cost.Burden))*.01,
+         severeBurden = as.numeric(gsub("%", "", Severe.Cost.Burden))*.01,
+         totalBurden = moderateBurden + severeBurden,
+         geographicClean = sub("\\(.*", "", Geographic.Area.Name),
+         geographicClean = substr(geographicClean, 
+                                  start = 1, 
+                                  stop = nchar(geographicClean)-1))
+
+
+rentBurdenFinal <- rentBurdenData %>%
+  reshape2::melt(
+    id.vars = c("Geographic.Area.Name", "incomeClean", "geographicClean"),
+    measure.vars = c("noBurden","moderateBurden","severeBurden", "totalBurden")
+  )
+
+rentBurdenFinal <- rentBurdenFinal %>%
+  mutate(NAMELSAD = str_sub(Geographic.Area.Name, start = 1, end = -18))
+
+
+houseMapData <- merge(rentBurdenFinal, houseMapClean)
+
+
+```
+
+```{r Create Individual Tables}
+moderateBurden <- houseMapData %>% filter(variable == "moderateBurden")
+
+moderateBurdenAll <- moderateBurden %>% filter(incomeClean == "All Ren")
+moderateBurdenBelow35 <- moderateBurden %>% filter(incomeClean == "Below $")
+moderateBurden3550 <- moderateBurden %>% filter(incomeClean == "$35,000")
+moderateBurden5075 <- moderateBurden %>% filter(incomeClean == "$50,000")
+moderateBurden75100 <- moderateBurden %>% filter(incomeClean == "$75,000")
+moderateBurdenOver100 <- moderateBurden %>% filter(incomeClean == "$100,00")
+
+```
+
+```{r Map Variables}
+
+fillOpacity = 0.85
+legendValues <- c(0, 0.5, 1.0)
+
+pal <- colorNumeric(
+  palette = "YlOrRd",
+  domain = houseMapData$value)
+
+```
+
+# **Moderate Burden**
+
+Percentage of households that qualify as moderately rent burdened (50% of annual income > rent ≥ 30% of annual income). Data is from the 2019 5-year American Community Survey.
+
+```{r Moderate Burden Map}
+
+
+leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>% 
+  addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
+  addPolygons(data = moderateBurdenAll$geometry,
+              fillColor = pal(moderateBurdenAll$value),
+              group = c("All Renter Households"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(moderateBurdenAll$geographicClean, 
+                             ": ", 
+                             scales::percent(moderateBurdenAll$value,2),  
+                             " of all renters qualify as moderately rent burdened.")) %>%
+  addPolygons(data = moderateBurdenBelow35$geometry,
+              fillColor = pal(moderateBurdenBelow35$value),
+              group = c("Below $35,000"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(moderateBurdenBelow35$geographicClean, 
+                             ": ", 
+                             scales::percent(moderateBurdenBelow35$value,2),  
+                             " of renters earning less than $35,000 annually qualify as moderately rent burdened.")) %>%
+  addPolygons(data = moderateBurden3550$geometry,
+              fillColor = pal(moderateBurden3550$value),
+              group = c("$35,000 - $49,999"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(moderateBurden3550$geographicClean, 
+                             ": ", 
+                             scales::percent(moderateBurden3550$value,2),  
+                             " of renters earning $35,000 - $49,999 annually qualify as moderately rent burdened.")) %>%
+  addPolygons(data = moderateBurden5075$geometry,
+              fillColor = pal(moderateBurden5075$value),
+              group = c("$50,000 - $74,999"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(moderateBurden5075$geographicClean, 
+                             ": ", 
+                             scales::percent(moderateBurden5075$value,2),  
+                             " of renters earning $50,000 - $74,999 annually qualify as moderately rent burdened.")) %>%
+  addPolygons(data = moderateBurden75100$geometry,
+              fillColor = pal(moderateBurden75100$value),
+              group = c("$75,000 - $99,999"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(moderateBurden75100$geographicClean, 
+                             ": ", 
+                             scales::percent(moderateBurden75100$value,2),  
+                             " of renters earning $75,000 - $99,999 annually qualify as moderately rent burdened.")) %>%
+  addPolygons(data = moderateBurdenOver100$geometry,
+              fillColor = pal(moderateBurdenOver100$value),
+              group = c("Over $100,000"),
+              color = 'black', # you need to use hex colors
+              fillOpacity = fillOpacity,
+              weight = 1,
+              popup = paste0(moderateBurdenOver100$geographicClean, 
+                             ": ", 
+                             scales::percent(moderateBurdenOver100$value,2),  
+                             " of renters earning over $100,000 annually qualify as moderately rent burdened.")) %>%
+  addProviderTiles(providers$Stamen.TonerLabels,
+                   group = "Location Labels") %>%
+  addLayersControl(
+    baseGroups = c("All Renter Households", 
+                   "Below $35,000",
+                   "$35,000 - $49,999", 
+                   "$50,000 - $74,999", 
+                   "$50,000 - $74,999", 
+                   "$75,000 - $99,999",
+                   "Over $100,000"),
+    overlayGroups = c("Location Labels"),
+    options = layersControlOptions(collapsed=FALSE)) %>% 
+  addLegendNumeric(position = "topright",
+                   pal = pal,
+                   values = c(0,1),
+                   bins = 4,
+                   title = "% Burdened",
+                   numberFormat = scales::percent,
+                   tickLength = 4,
+                   fillOpacity = 1) %>%
+  htmlwidgets::onRender("
+        function() {
+            $('.leaflet-control-layers-list').prepend('<label style=\"text-align:center\">Annual Income</label>');
+        }
+    ")
+```
+

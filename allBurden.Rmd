@@ -1,5 +1,5 @@
 ---
-title: Rent Burden
+title: Total Burden
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -16,17 +16,15 @@ display: none;
 <div class="col-sm-8">
 
 
-```{r setup, include=FALSE, echo = FALSE, message = FALSE, warning = FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 
 library(knitr)
 library(tidyverse)
-library(leaflet)
-library(leafem)
 library(sf)
+library(leaflet)
 library(leaflet.extras)
 library(leaflegend)
-library(widgetframe)
 ```
 
 ```{r Load Data, include = FALSE}
@@ -57,7 +55,7 @@ rentBurdenData <- rentBurdenData %>%
 rentBurdenFinal <- rentBurdenData %>%
   reshape2::melt(
     id.vars = c("Geographic.Area.Name", "incomeClean", "geographicClean"),
-    measure.vars = c("noBurden","moderateBurden","severeBurden", "moderateBurdenSum")
+    measure.vars = c("noBurden","moderateBurden","severeBurden", "totalBurden")
   )
 
 rentBurdenFinal <- rentBurdenFinal %>%
@@ -94,7 +92,7 @@ pal <- colorNumeric(
 
 # **Total Burden**
 
-Percentage of households that are rent burdened (rent ≥ 30% of annual income). Data is from the 2019 5-year American Community Survey.
+Percentage of households that qualify as rent burdened (rent ≥ 30% of annual income). Data is from the 2019 5-year American Community Survey.
 
 ```{r Total Burden Map}
 
@@ -110,7 +108,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
               popup = paste0(totalBurdenAll$geographicClean, 
                              ": ", 
                              scales::percent(totalBurdenAll$value,2),  
-                             " of all renters are rent burdened.")) %>%
+                             " of all renters qualify as rent burdened.")) %>%
   addPolygons(data = totalBurdenBelow35$geometry,
               fillColor = pal(totalBurdenBelow35$value),
               group = c("Below $35,000"),
@@ -120,7 +118,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
               popup = paste0(totalBurdenBelow35$geographicClean, 
                              ": ", 
                              scales::percent(totalBurdenBelow35$value,2),  
-                             " of renters earning less than $35,000 annually are rent burdened.")) %>%
+                             " of renters earning less than $35,000 annually qualify as rent burdened.")) %>%
   addPolygons(data = totalBurden3550$geometry,
               fillColor = pal(totalBurden3550$value),
               group = c("$35,000 - $49,999"),
@@ -130,7 +128,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
               popup = paste0(totalBurden3550$geographicClean, 
                              ": ", 
                              scales::percent(totalBurden3550$value,2),  
-                             " of renters earning $35,000 - $49,999 annually are rent burdened.")) %>%
+                             " of renters earning $35,000 - $49,999 annually qualify as rent burdened.")) %>%
   addPolygons(data = totalBurden5075$geometry,
               fillColor = pal(totalBurden5075$value),
               group = c("$50,000 - $74,999"),
@@ -140,7 +138,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
               popup = paste0(totalBurden5075$geographicClean, 
                              ": ", 
                              scales::percent(totalBurden5075$value,2),  
-                             " of renters earning $50,000 - $74,999 annually are rent burdened.")) %>%
+                             " of renters earning $50,000 - $74,999 annually qualify as rent burdened.")) %>%
   addPolygons(data = totalBurden75100$geometry,
               fillColor = pal(totalBurden75100$value),
               group = c("$75,000 - $99,999"),
@@ -150,7 +148,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
               popup = paste0(totalBurden75100$geographicClean, 
                              ": ", 
                              scales::percent(totalBurden75100$value,2),  
-                             " of renters earning $75,000 - $99,999 annually are rent burdened.")) %>%
+                             " of renters earning $75,000 - $99,999 annually qualify as rent burdened.")) %>%
   addPolygons(data = totalBurdenOver100$geometry,
               fillColor = pal(totalBurdenOver100$value),
               group = c("Over $100,000"),
@@ -160,7 +158,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
               popup = paste0(totalBurdenOver100$geographicClean, 
                              ": ", 
                              scales::percent(totalBurdenOver100$value,2),  
-                             " of renters earning over $100,000 annually are rent burdened.")) %>%
+                             " of renters earning over $100,000 annually qualify as rent burdened.")) %>%
   addProviderTiles(providers$Stamen.TonerLabels,
                    group = "Location Labels") %>%
   addLayersControl(
@@ -187,3 +185,4 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
         }
     ")
 ```
+
