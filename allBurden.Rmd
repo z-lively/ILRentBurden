@@ -97,7 +97,7 @@ Percentage of households that qualify as rent burdened (rent ≥ 30% of annual i
 ```{r Total Burden Map}
 
 
-leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>% 
+leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5), width = '100%') %>% 
   addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
   addPolygons(data = totalBurdenAll$geometry,
               fillColor = pal(totalBurdenAll$value),
