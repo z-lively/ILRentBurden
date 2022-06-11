@@ -97,7 +97,7 @@ Percentage of households that qualify as moderately rent burdened (50% of annual
 ```{r Moderate Burden Map}
 
 
-leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>% 
+leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5), width = '100%') %>% 
   addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
   addPolygons(data = moderateBurdenAll$geometry,
               fillColor = pal(moderateBurdenAll$value),
@@ -162,7 +162,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
   addProviderTiles(providers$Stamen.TonerLabels,
                    group = "Location Labels") %>%
   addLayersControl(
-    position = "bottomright",
+    position = "topright",
     baseGroups = c("All Renter Households", 
                    "Below $35,000",
                    "$35,000 - $49,999", 
@@ -172,7 +172,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
                    "Over $100,000"),
     overlayGroups = c("Location Labels"),
     options = layersControlOptions(collapsed=FALSE)) %>% 
-  addLegendNumeric(position = "bottomright",
+  addLegendNumeric(position = "topright",
                    pal = pal,
                    values = c(0,1),
                    bins = 4,

@@ -3,7 +3,7 @@ navbar:
   title: "Illinois Rent Burden"
   left:
     - text: "Total Burden"
-      href: allBurden.html
+      href: totalBurden.html
     - text: "Moderate Burden"
       href: moderateBurden.html
     - text: "Severe Burden"
