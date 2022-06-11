@@ -162,6 +162,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
   addProviderTiles(providers$Stamen.TonerLabels,
                    group = "Location Labels") %>%
   addLayersControl(
+    position = "bottomleft",
     baseGroups = c("All Renter Households", 
                    "Below $35,000",
                    "$35,000 - $49,999", 
@@ -171,7 +172,7 @@ leaflet(options = leafletOptions(zoomSnap = .65, zoomDelta=.5)) %>%
                    "Over $100,000"),
     overlayGroups = c("Location Labels"),
     options = layersControlOptions(collapsed=FALSE)) %>% 
-  addLegendNumeric(position = "topright",
+  addLegendNumeric(position = "bottomleft",
                    pal = pal,
                    values = c(0,1),
                    bins = 4,
